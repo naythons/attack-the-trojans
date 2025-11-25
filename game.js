@@ -11,6 +11,12 @@ let width, height;
 function resize() {
   width = canvas.width = window.innerWidth;
   height = canvas.height = window.innerHeight;
+
+  // if sword not placed yet, put it near center
+  if (sword.x === null || sword.y === null) {
+    sword.x = width / 2;
+    sword.y = height / 2;
+  }
 }
 resize();
 window.addEventListener("resize", resize);
@@ -24,95 +30,76 @@ const base = {
   hp: 100
 };
 
+const BORDER = 40; // safety border so sword never leaves screen
+
 const sword = {
-  radius: 110,
-  angle: -Math.PI / 2, // pointing up
-  length: 60,
-  width: 14,
-  color: "#f6ff9a"
+  x: null,
+  y: null,
+  length: 80,
+  width: 16,
+  color: "#f6ff9a",
+  isDragging: false,
+  offsetX: 0,
+  offsetY: 0,
+  swingAngle: 0,   // current rotation
+  swingDir: 1,     // +1 or -1 for back-and-forth
+  hitRadius: 70    // range around sword center to damage enemies
 };
 
 let enemies = [];
-let projectiles = [];
-
 let score = 0;
 let wave = 1;
 
-// ----- INPUT / SWING LOGIC -----
-let isCharging = false;
-let lastAngle = null;
-let lastTime = null;
-let angularVelocity = 0; // rad/s
-let chargePower = 0;     // 0–1
+// ----- INPUT: DRAG + SWING -----
+function getMousePos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
+  };
+}
 
-function screenToAngle(mx, my) {
-  const dx = mx - base.x();
-  const dy = my - base.y();
-  return Math.atan2(dy, dx);
+function isMouseOnSword(mx, my) {
+  const dx = mx - sword.x;
+  const dy = my - sword.y;
+  const dist = Math.hypot(dx, dy);
+  return dist < sword.length; // simple circular hitbox for grabbing
 }
 
 canvas.addEventListener("mousedown", (e) => {
   if (!window.gameStart || base.hp <= 0) return;
 
-  isCharging = true;
-  lastAngle = screenToAngle(e.clientX, e.clientY);
-  lastTime = performance.now();
-});
-
-canvas.addEventListener("mouseup", () => {
-  if (!window.gameStart || base.hp <= 0) return;
-
-  if (isCharging) {
-    // launch projectile based on chargePower and direction
-    const dirAngle = sword.angle;
-    const minSpeed = 500;
-    const maxSpeed = 1400;
-    const speed = minSpeed + (maxSpeed - minSpeed) * chargePower;
-
-    projectiles.push({
-      x: base.x() + Math.cos(dirAngle) * sword.radius,
-      y: base.y() + Math.sin(dirAngle) * sword.radius,
-      vx: Math.cos(dirAngle) * speed,
-      vy: Math.sin(dirAngle) * speed,
-      radius: 10,
-      damage: 20 + 60 * chargePower
-    });
+  const { x: mx, y: my } = getMousePos(e);
+  if (isMouseOnSword(mx, my)) {
+    sword.isDragging = true;
+    sword.offsetX = mx - sword.x;
+    sword.offsetY = my - sword.y;
   }
-  isCharging = false;
-  angularVelocity = 0;
-  chargePower = 0;
-  sword.radius = 110;
 });
 
 canvas.addEventListener("mousemove", (e) => {
   if (!window.gameStart || base.hp <= 0) return;
-  if (!isCharging) return;
+  if (!sword.isDragging) return;
 
-  const now = performance.now();
-  const a = screenToAngle(e.clientX, e.clientY);
+  const { x: mx, y: my } = getMousePos(e);
 
-  if (lastAngle != null) {
-    // shortest angular difference
-    let diff = a - lastAngle;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
+  let nx = mx - sword.offsetX;
+  let ny = my - sword.offsetY;
 
-    const dt = (now - lastTime) / 1000; // seconds
-    if (dt > 0) {
-      const currentAV = diff / dt; // rad/s
-      // smooth a bit
-      angularVelocity = angularVelocity * 0.7 + currentAV * 0.3;
+  // clamp to safety borders
+  nx = Math.max(BORDER, Math.min(width - BORDER, nx));
+  ny = Math.max(BORDER, Math.min(height - BORDER, ny));
 
-      // charge from angular speed (absolute)
-      const maxAV = 12; // cap
-      const normalized = Math.min(Math.abs(angularVelocity) / maxAV, 1);
-      chargePower = normalized;
-      sword.radius = 110 + 40 * chargePower; // visually extend a bit
-    }
-  }
-  lastAngle = a;
-  lastTime = now;
-  sword.angle = a;
+  sword.x = nx;
+  sword.y = ny;
+});
+
+canvas.addEventListener("mouseup", () => {
+  sword.isDragging = false;
+});
+
+canvas.addEventListener("mouseleave", () => {
+  sword.isDragging = false;
 });
 
 // ----- ENEMY SPAWNING -----
@@ -163,7 +150,7 @@ function update(dt) {
     spawnInterval = Math.max(500, 1400 - (wave - 1) * 80);
   }
 
-  // move enemies
+  // move enemies toward base
   for (const enemy of enemies) {
     const dx = base.x() - enemy.x;
     const dy = base.y() - enemy.y;
@@ -179,34 +166,39 @@ function update(dt) {
       enemy.hp = 0;
     }
   }
-  enemies = enemies.filter(e => e.hp > 0);
 
-  // move projectiles
-  for (const p of projectiles) {
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
+  // sword swing logic
+  if (sword.isDragging) {
+    const swingSpeed = 6;    // rad/sec
+    const maxSwing = 0.6;    // about ±35 degrees
+    sword.swingAngle += sword.swingDir * swingSpeed * dt;
+    if (sword.swingAngle > maxSwing || sword.swingAngle < -maxSwing) {
+      sword.swingDir *= -1;
+    }
+  } else {
+    // ease back to center when not dragging
+    sword.swingAngle *= 0.9;
   }
-  // remove offscreen
-  projectiles = projectiles.filter(p =>
-    p.x > -60 && p.x < width + 60 && p.y > -60 && p.y < height + 60
-  );
 
-  // collisions: projectiles vs enemies
-  for (const p of projectiles) {
-    for (const e of enemies) {
-      const dx = e.x - p.x;
-      const dy = e.y - p.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < e.radius + p.radius) {
-        e.hp -= p.damage;
-        p.hit = true;
+  // sword vs enemies collision
+  for (const e of enemies) {
+    const dx = e.x - sword.x;
+    const dy = e.y - sword.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < sword.hitRadius) {
+      // continuous damage while in range
+      if (e.hp > 0) {
+        e.hp -= 80 * dt; // damage per second
         if (e.hp <= 0) {
           score += 5;
         }
       }
     }
   }
-  projectiles = projectiles.filter(p => !p.hit);
+
+  // remove dead enemies
+  enemies = enemies.filter(e => e.hp > 0);
 
   // HUD
   hpText.textContent = `Base HP: ${Math.max(0, Math.floor(base.hp))}`;
@@ -258,26 +250,19 @@ function draw() {
 
   // sword (if base alive)
   if (base.hp > 0) {
-    const sx = base.x() + Math.cos(sword.angle) * sword.radius;
-    const sy = base.y() + Math.sin(sword.angle) * sword.radius;
-
     ctx.save();
-    ctx.translate(sx, sy);
-    ctx.rotate(sword.angle + Math.PI / 2);
+    ctx.translate(sword.x, sword.y);
+    ctx.rotate(sword.swingAngle);
+
+    // blade
     ctx.fillStyle = sword.color;
     ctx.fillRect(-sword.width / 2, -sword.length, sword.width, sword.length);
-    ctx.fillStyle = "#ffe9b3";
-    ctx.fillRect(-sword.width / 2, -sword.length - 10, sword.width, 10); // tip
-    ctx.restore();
 
-    // charge indicator
-    if (isCharging) {
-      ctx.beginPath();
-      ctx.arc(base.x(), base.y(), sword.radius + 12, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(0,255,200,${0.3 + 0.4 * chargePower})`;
-      ctx.lineWidth = 4;
-      ctx.stroke();
-    }
+    // tip
+    ctx.fillStyle = "#ffe9b3";
+    ctx.fillRect(-sword.width / 2, -sword.length - 10, sword.width, 10);
+
+    ctx.restore();
   }
 
   // enemies (Trojan horses)
@@ -298,17 +283,6 @@ function draw() {
     ctx.arc(e.x - e.radius * 0.5, e.y + e.radius * 0.8, 6, 0, Math.PI * 2);
     ctx.arc(e.x + e.radius * 0.5, e.y + e.radius * 0.8, 6, 0, Math.PI * 2);
     ctx.fill();
-  }
-
-  // projectiles (spinning energy)
-  for (const p of projectiles) {
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-    ctx.fillStyle = "#a9fff6";
-    ctx.fill();
-    ctx.strokeStyle = "#53f5e3";
-    ctx.lineWidth = 2;
-    ctx.stroke();
   }
 
   // game over text
