@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Attack the Trojans – Naython Sayadeth</title>
+
+  <style>
+    body { margin: 0; overflow: hidden; background: #05060a; }
+    canvas { display: block; background: #0b0e16; }
+
+    #hud {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      font-size: 16px;
+      z-index: 5;
+      text-shadow: 0 0 4px #000;
+      display: none;
+    }
+
+    #hud span { margin-right: 16px; }
+
+    /* START SCREEN */
+    #startScreen {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at top, #222 0%, #000 80%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 20;
+      color: white;
+      text-align: center;
+      font-family: Arial, sans-serif;
+    }
+
+    #title {
+      font-size: 48px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      text-shadow: 0 0 12px #00eaff;
+    }
+
+    #subtitle {
+      font-size: 22px;
+      opacity: 0.9;
+      margin-bottom: 40px;
+    }
+
+    #creator {
+      font-size: 18px;
+      opacity: 0.7;
+      margin-bottom: 40px;
+    }
+
+    .btn {
+      padding: 14px 30px;
+      background: #00eaff;
+      color: #000;
+      font-size: 20px;
+      font-weight: bold;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(0, 234, 255, 0.7);
+      transition: 0.15s;
+    }
+
+    .btn:hover {
+      transform: scale(1.08);
+      box-shadow: 0 0 30px rgba(0, 234, 255, 1);
+    }
+
+    #instructions {
+      position: fixed;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      color: #8af7ff;
+      font-family: Arial;
+      font-size: 15px;
+      text-shadow: 0 0 6px #000;
+      z-index: 4;
+      display: none;
+    }
+  </style>
+
+</head>
+
+<body>
+
+  <!-- START SCREEN -->
+  <div id="startScreen">
+    <div id="title">Attack the Trojans</div>
+    <div id="subtitle">Defend your firewall base</div>
+    <div id="creator">by Naython Sayadeth</div>
+    <button id="playBtn" class="btn">Play</button>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <span id="hpText">Base HP: 100</span>
+    <span id="scoreText">Score: 0</span>
+    <span id="waveText">Wave: 1</span>
+  </div>
+
+  <!-- Instructions -->
+  <div id="instructions">
+    Click & hold near the sword, move in circles to charge power.<br>
+    Release to launch the blade at incoming Trojan horses.
+  </div>
+
+  <canvas id="game"></canvas>
+  <script src="game.js"></script>
+
+  <script>
+    // Start button logic
+    const startScreen = document.getElementById("startScreen");
+    const playBtn = document.getElementById("playBtn");
+    const hud = document.getElementById("hud");
+    const instructions = document.getElementById("instructions");
+
+    playBtn.addEventListener("click", () => {
+      startScreen.style.display = "none";
+      hud.style.display = "block";
+      instructions.style.display = "block";
+      window.gameStart = true; // game.js checks this
+    });
+  </script>
+
+</body>
+</html>
